@@ -3,19 +3,34 @@ import asyncio
 import random
 import datetime
 import io
+import urllib.parse
 import aiohttp
 import discord
 from discord.ext import commands
-from google import genai
+from flask import Flask
+from threading import Thread
 from PIL import Image, ImageOps, ImageDraw, ImageFont
 
-# ==================== 1. SECURITY & CONFIG ====================
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-AUTO_LOFI_VC_ID = os.getenv("LOFI_VC_ID")  # Voice Channel ID for 24/7 Lofi
+# ==================== 1. RENDER PORT TIMEOUT FIX ====================
+app = Flask('')
 
-# Initialize Official Gemini Client with correct model support
-gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+@app.route('/')
+def home():
+    return "MU Bot is active 24/7!"
+
+def run():
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+keep_alive()
+
+# ==================== 2. SECURITY & CONFIG ====================
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
+AUTO_LOFI_VC_ID = os.getenv("LOFI_VC_ID")
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -26,17 +41,19 @@ intents.voice_states = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # In-Memory Databases
-user_balances = {}      # {user_id: balance}
-user_inventories = {}   # {user_id: [item_names]}
-protected_users = set() # {user_id}
-daily_claimed = {}      # {user_id_or_key: date}
-user_xp = {}            # {user_id: xp}
-user_level = {}         # {user_id: level}
-work_cooldowns = {}     # {user_id: datetime}
+user_balances = {}      
+user_inventories = {}   
+protected_users = set() 
+daily_claimed = {}      
+user_xp = {}            
+user_level = {}         
+work_cooldowns = {}     
 
-BANNED_WORDS = ["badword1", "badword2", "spamlink.com"]
+BANNED_WORDS = [
+    "badword1", "badword2", "spamlink.com", "sex", "porno", "nude",
+    "gali1", "gali2", "fuck", "bitch", "bastard", "slut"
+]
 
-# Shop Items Definition
 SHOP_ITEMS = {
     "chicken": {"cost": 200, "type": "food", "name": "🍗 Chicken"},
     "pizza": {"cost": 500, "type": "food", "name": "🍕 Pizza"},
@@ -45,17 +62,111 @@ SHOP_ITEMS = {
     "conqueror": {"cost": 99999, "type": "role", "name": "CONQUEROR"}
 }
 
-# Quiz Questions Database
+# 100+ General Knowledge Quiz Questions
 QUIZ_QUESTIONS = [
     {"q": "What is the capital of Bangladesh?", "a": "dhaka"},
     {"q": "Which programming language is this bot written in?", "a": "python"},
     {"q": "How many planet(s) are there in our Solar System?", "a": "8"},
     {"q": "What is 15 + 27?", "a": "42"},
     {"q": "Which gas do plants absorb from the atmosphere?", "a": "carbon dioxide"},
-    {"q": "What is the largest ocean on Earth?", "a": "pacific"}
+    {"q": "What is the largest ocean on Earth?", "a": "pacific"},
+    {"q": "Who wrote 'Gitanjali'?", "a": "rabindranath tagore"},
+    {"q": "Which currency is used in Japan?", "a": "yen"},
+    {"q": "What is the national sport of Bangladesh?", "a": "kabaddi"},
+    {"q": "What is the chemical symbol for Gold?", "a": "au"},
+    {"q": "How many colors are in a rainbow?", "a": "7"},
+    {"q": "Which planet is known as the Red Planet?", "a": "mars"},
+    {"q": "What is the hardest natural substance on Earth?", "a": "diamond"},
+    {"q": "What is 100 divided by 4?", "a": "25"},
+    {"q": "Who is the founder of Microsoft?", "a": "bill gates"},
+    {"q": "What is the national flower of Bangladesh?", "a": "water lily"},
+    {"q": "Which organ pumps blood in the human body?", "a": "heart"},
+    {"q": "What is the capital of France?", "a": "paris"},
+    {"q": "What is the boiling point of water in Celsius?", "a": "100"},
+    {"q": "Which continent is Bangladesh located in?", "a": "asia"},
+    {"q": "What is the longest river in Bangladesh?", "a": "surma"},
+    {"q": "Who painted the Mona Lisa?", "a": "leonardo da vinci"},
+    {"q": "What is the chemical symbol for Water?", "a": "h2o"},
+    {"q": "How many days are in a leap year?", "a": "366"},
+    {"q": "Which animal is known as the Ship of the Desert?", "a": "camel"},
+    {"q": "Who discovered gravity?", "a": "isaac newton"},
+    {"q": "What is the currency of the UK?", "a": "pound"},
+    {"q": "What is the capital of USA?", "a": "washington dc"},
+    {"q": "How many sides does a triangle have?", "a": "3"},
+    {"q": "Which gas do humans breathe in to survive?", "a": "oxygen"},
+    {"q": "What is the chemical symbol for Iron?", "a": "fe"},
+    {"q": "Which element has the symbol 'O'?", "a": "oxygen"},
+    {"q": "What is 12 multiplied by 12?", "a": "144"},
+    {"q": "What is the speed of light in vacuum (approx km/s)?", "a": "300000"},
+    {"q": "Which bird is the national bird of Bangladesh?", "a": "magpie robin"},
+    {"q": "What is the largest planet in our solar system?", "a": "jupiter"},
+    {"q": "What is the smallest prime number?", "a": "2"},
+    {"q": "Who invented the telephone?", "a": "alexander graham bell"},
+    {"q": "What is the capital of India?", "a": "new delhi"},
+    {"q": "What is the capital of Canada?", "a": "ottawa"},
+    {"q": "Which country is called the Land of Rising Sun?", "a": "japan"},
+    {"q": "What is the freeze point of water in Celsius?", "a": "0"},
+    {"q": "How many letters are in the English alphabet?", "a": "26"},
+    {"q": "Which animal is the largest mammal in the world?", "a": "blue whale"},
+    {"q": "What is 50 percent of 200?", "a": "100"},
+    {"q": "Which continent is known as Dark Continent?", "a": "africa"},
+    {"q": "Who is known as Father of Computer?", "a": "charles babbage"},
+    {"q": "What is the chemical symbol for Silver?", "a": "ag"},
+    {"q": "What is the largest desert in the world?", "a": "antarctica"},
+    {"q": "What is the national fruit of Bangladesh?", "a": "jackfruit"},
+    {"q": "What is 9 squared?", "a": "81"},
+    {"q": "Which planet is closest to the Sun?", "a": "mercury"},
+    {"q": "What is the capital of Australia?", "a": "canberra"},
+    {"q": "What is the capital of Germany?", "a": "berlin"},
+    {"q": "Who wrote 'Romeo and Juliet'?", "a": "william shakespeare"},
+    {"q": "Which metal is liquid at room temperature?", "a": "mercury"},
+    {"q": "What is the national fish of Bangladesh?", "a": "hilsha"},
+    {"q": "How many bones are in the adult human body?", "a": "206"},
+    {"q": "What is 7 multiplied by 8?", "a": "56"},
+    {"q": "Which planet has famous rings around it?", "a": "saturn"},
+    {"q": "Who was the first person to walk on the Moon?", "a": "neil armstrong"},
+    {"q": "What is the currency of USA?", "a": "dollar"},
+    {"q": "What is the capital of Italy?", "a": "rome"},
+    {"q": "What is the main component of sun?", "a": "hydrogen"},
+    {"q": "How many players are on a soccer team on field?", "a": "11"},
+    {"q": "What is 250 - 85?", "a": "165"},
+    {"q": "Which country won the First World Cup in Cricket in 1975?", "a": "west indies"},
+    {"q": "What is the chemical symbol for Sodium?", "a": "na"},
+    {"q": "What is the chemical symbol for Potassium?", "a": "k"},
+    {"q": "How many continents are on Earth?", "a": "7"},
+    {"q": "What is the capital of Saudi Arabia?", "a": "riyadh"},
+    {"q": "Who painted 'The Starry Night'?", "a": "vincent van gogh"},
+    {"q": "Which gas causes global warming?", "a": "carbon dioxide"},
+    {"q": "What is the capital of Russia?", "a": "moscow"},
+    {"q": "What is 10 to the power of 3?", "a": "1000"},
+    {"q": "What is the national tree of Bangladesh?", "a": "mango tree"},
+    {"q": "Which organ in human body purifies blood?", "a": "kidney"},
+    {"q": "What is the capital of Spain?", "a": "madrid"},
+    {"q": "How many teeth does a human adult normally have?", "a": "32"},
+    {"q": "What is 11 times 11?", "a": "121"},
+    {"q": "Which instrument measures temperature?", "a": "thermometer"},
+    {"q": "What is the capital of Turkey?", "a": "ankara"},
+    {"q": "What is the currency of China?", "a": "yuan"},
+    {"q": "Which blood group is universal donor?", "a": "o negative"},
+    {"q": "What is the capital of Egypt?", "a": "cairo"},
+    {"q": "How many rings are on the Olympic flag?", "a": "5"},
+    {"q": "What is 60 divided by 5?", "a": "12"},
+    {"q": "Which gas is used in fire extinguishers?", "a": "carbon dioxide"},
+    {"q": "Who invented the light bulb?", "a": "thomas edison"},
+    {"q": "What is the capital of Nepal?", "a": "kathmandu"},
+    {"q": "What is the capital of South Korea?", "a": "seoul"},
+    {"q": "Which country invented paper?", "a": "china"},
+    {"q": "What is the square root of 64?", "a": "8"},
+    {"q": "What is the capital of Thailand?", "a": "bangkok"},
+    {"q": "Which planet is known as Earth's twin?", "a": "venus"},
+    {"q": "What is the capital of Malaysia?", "a": "kuala lumpur"},
+    {"q": "What is 5 cubed (5*5*5)?", "a": "125"},
+    {"q": "What is the currency of Europe union?", "a": "euro"},
+    {"q": "What is the capital of Argentina?", "a": "buenos aires"},
+    {"q": "What is the national animal of Bangladesh?", "a": "royal bengal tiger"},
+    {"q": "What is 1000 minus 333?", "a": "667"}
 ]
 
-# 20 Varied Work Scenarios
 WORK_SCENARIOS = [
     ("You found a lost coin on the street while walking!", 25),
     ("You sold a used plastic bottle to a local collector!", 35),
@@ -81,13 +192,12 @@ WORK_SCENARIOS = [
 
 LOFI_STREAM_URL = "https://stream.zeno.fm/f3wvbbqmdg8uv"
 
-# ==================== 2. BOT EVENTS ====================
+# ==================== 3. BOT EVENTS ====================
 @bot.event
 async def on_ready():
     print(f'✅ {bot.user.name} is online and fully active!')
-    await bot.change_presence(activity=discord.Game(name="!help | AI Chat | Games | 24/7 Lofi"))
+    await bot.change_presence(activity=discord.Game(name="!help | MU Homie AI | Games | 24/7 Lofi"))
     
-    # Auto-Join 24/7 Lofi Voice Channel
     if AUTO_LOFI_VC_ID:
         try:
             vc_channel = bot.get_channel(int(AUTO_LOFI_VC_ID))
@@ -116,11 +226,15 @@ async def on_message(message):
     if message.author == bot.user:
         return
 
-    # Auto-Moderation
     msg_lower = message.content.lower()
+
+    # Moderation Check
     if any(word in msg_lower for word in BANNED_WORDS):
-        await message.delete()
-        await message.channel.send(f"⚠️ {message.author.mention}, bad words/links are not allowed!", delete_after=5)
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        await message.channel.send(f"{message.author.mention} Ei cilo tomar mone / chi chi tumi ato kharap 🙈")
         return
 
     # Leveling System
@@ -138,74 +252,78 @@ async def on_message(message):
     user_xp[uid] = current_xp
     user_level[uid] = current_lvl
 
-    # Gemini AI Integration (Using Gemini 3.8 Flash model[cite: 1])
-    if bot.user.mentioned_in(message) or isinstance(message.channel, discord.DMChannel):
+    # Homies Banglish AI Chat Integration
+    if (bot.user.mentioned_in(message) or isinstance(message.channel, discord.DMChannel)) and not message.content.startswith("!"):
         async with message.channel.typing():
             try:
-                user_prompt = message.content.replace(f'<@{bot.user.id}>', '').strip() or "Hello!"
+                user_prompt = message.content.replace(f'<@{bot.user.id}>', '').strip() or "Ki obostha bro?"
+                
+                if any(bad in user_prompt.lower() for bad in ["sex", "nude", "porno", "gali", "fuck", "bitch"]):
+                    await message.reply("Ei cilo tomar mone / chi chi tumi ato kharap 🙈")
+                    return
 
-                response = await asyncio.to_thread(
-                    gemini_client.models.generate_content,
-                    model='gemini-3.8-flash',
-                    contents=user_prompt
+                system_prompt = (
+                    "You are MU Bot, a cool Discord homie speaking Banglish (Bengali written in English letters). "
+                    "Talk casually like a close friend/bro. Keep responses short, funny, and engaging. "
+                    "If someone asks inappropriate things, answer: 'Ei cilo tomar mone / chi chi tumi ato kharap 🙈'."
                 )
-
-                if response and response.text:
-                    output = response.text
-                    if len(output) > 2000:
-                        for chunk in [output[i:i+1900] for i in range(0, len(output), 1900)]:
-                            await message.reply(chunk)
-                    else:
-                        await message.reply(output)
-                else:
-                    await message.reply("I couldn't generate a response. Please try again.")
+                
+                full_query = f"{system_prompt}\nUser says: {user_prompt}"
+                encoded_text = urllib.parse.quote(full_query)
+                url = f"https://text.pollinations.ai/{encoded_text}"
+                
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url) as response:
+                        if response.status == 200:
+                            output = await response.text()
+                            if len(output) > 2000:
+                                for chunk in [output[i:i+1900] for i in range(0, len(output), 1900)]:
+                                    await message.reply(chunk)
+                            else:
+                                await message.reply(output)
+                        else:
+                            await message.reply("Arey bro, server-a ektu chap, abar bol toh!")
             except Exception as e:
-                print(f"❌ GEMINI API ERROR: {e}")
-                await message.reply(f"Sorry, I encountered an error: {e}")
+                print(f"❌ AI ERROR: {e}")
+                await message.reply("Arey chill bro, ektu problem hoise. Abar bol!")
 
     await bot.process_commands(message)
 
-# ==================== 3. TRANSLATION SYSTEM ====================
+# ==================== 4. TRANSLATION SYSTEM ====================
 @bot.command(aliases=["tr"])
 async def translate(ctx, target_lang: str, *, text: str = None):
-    """Translate text or replied message (!tr bn How are you / reply with !tr en)"""
     if ctx.message.reference and not text:
         replied_msg = await ctx.channel.fetch_message(ctx.message.reference.message_id)
         text = replied_msg.content
 
     if not text:
-        await ctx.send("❌ Please provide text to translate or reply to a message!\nExample: `!tr bangla How are you?` or reply with `!tr english`")
+        await ctx.send("❌ Please provide text to translate or reply to a message!")
         return
 
     async with ctx.typing():
         try:
-            prompt = f"Translate the following text accurately into {target_lang}. Return ONLY the translated text without extra explanation:\n\n{text}"
-            response = await asyncio.to_thread(
-                gemini_client.models.generate_content,
-                model='gemini-3.8-flash',
-                contents=prompt
-            )
-
-            if response and response.text:
-                embed = discord.Embed(
-                    title=f"🌐 Translation to {target_lang.title()}",
-                    description=response.text,
-                    color=discord.Color.blue()
-                )
-                embed.set_footer(text=f"Requested by {ctx.author.name}")
-                await ctx.send(embed=embed)
-            else:
-                await ctx.send("❌ Could not translate text.")
+            prompt = f"Translate the following text accurately into {target_lang}. Return ONLY the translated text: {text}"
+            encoded_text = urllib.parse.quote(prompt)
+            url = f"https://text.pollinations.ai/{encoded_text}"
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as response:
+                    if response.status == 200:
+                        translated_text = await response.text()
+                        embed = discord.Embed(title=f"🌐 Translation to {target_lang.title()}", description=translated_text, color=discord.Color.blue())
+                        await ctx.send(embed=embed)
+                    else:
+                        await ctx.send("❌ Could not translate text.")
         except Exception as e:
             await ctx.send(f"❌ Translation Error: {e}")
 
-# ==================== 4. ECONOMY, WORK & SHOP ====================
+# ==================== 5. ECONOMY, WORK, GAMES & SHOP ====================
 @bot.command()
 async def balance(ctx, member: discord.Member = None):
     user = member or ctx.author
     bal = user_balances.get(user.id, 100)
     user_balances[user.id] = bal
-    await ctx.send(f"💰 {user.mention} has **{bal}** points/coins!")
+    await ctx.send(f"💰 {user.mention} has **{bal}** coins!")
 
 @bot.command()
 async def daily(ctx):
@@ -216,42 +334,10 @@ async def daily(ctx):
         return
     daily_claimed[f"daily_{user_id}"] = today
     user_balances[user_id] = user_balances.get(user_id, 100) + 200
-    await ctx.send(f"🎁 {ctx.author.mention}, you claimed **200** daily points! Total: **{user_balances[user_id]}**")
-
-@bot.command()
-async def collect(ctx):
-    """Claim role-based daily points"""
-    user_id = ctx.author.id
-    today = datetime.date.today()
-    collect_key = f"collect_{user_id}"
-    
-    if daily_claimed.get(collect_key) == today:
-        await ctx.send(f"⏳ {ctx.author.mention}, you have already claimed your `!collect` reward today!")
-        return
-
-    points_awarded = 500
-    role_title = "Member"
-
-    if ctx.author.guild_permissions.administrator or any(role.name.lower() in ["supreme leader", "admin", "owner"] for role in ctx.author.roles):
-        points_awarded = 5000
-        role_title = "Supreme Leader / Admin"
-    elif ctx.author.guild_permissions.manage_messages or any(role.name.lower() in ["moderator", "mod"] for role in ctx.author.roles):
-        points_awarded = 1000
-        role_title = "Moderator"
-
-    daily_claimed[collect_key] = today
-    user_balances[user_id] = user_balances.get(user_id, 100) + points_awarded
-
-    embed = discord.Embed(
-        title="🎁 Daily Collection Claimed!",
-        description=f"{ctx.author.mention} ({role_title}) collected **{points_awarded}** points today!\n💰 Total: `{user_balances[user_id]}` points.",
-        color=discord.Color.gold()
-    )
-    await ctx.send(embed=embed)
+    await ctx.send(f"🎁 {ctx.author.mention}, you claimed **200** daily points!")
 
 @bot.command()
 async def work(ctx):
-    """Do funny work to earn points (Cooldown: 1 hour)"""
     user_id = ctx.author.id
     now = datetime.datetime.now()
 
@@ -260,18 +346,14 @@ async def work(ctx):
         time_diff = (now - last_work).total_seconds()
         if time_diff < 3600:
             remaining_mins = int((3600 - time_diff) // 60)
-            await ctx.send(f"⏳ {ctx.author.mention}, you are tired! Please wait **{remaining_mins} minutes** before working again.")
+            await ctx.send(f"⏳ {ctx.author.mention}, please wait **{remaining_mins} minutes** before working again.")
             return
 
     scenario, earned_points = random.choice(WORK_SCENARIOS)
     user_balances[user_id] = user_balances.get(user_id, 100) + earned_points
     work_cooldowns[user_id] = now
 
-    embed = discord.Embed(
-        title="💼 Work Done!",
-        description=f"{ctx.author.mention}, {scenario}\n\n💰 **Earned:** `{earned_points}` points!\nTotal Balance: `{user_balances[user_id]}` points.",
-        color=discord.Color.green()
-    )
+    embed = discord.Embed(title="💼 Work Done!", description=f"{ctx.author.mention}, {scenario}\n\n💰 **Earned:** `{earned_points}` points!", color=discord.Color.green())
     await ctx.send(embed=embed)
 
 @bot.command()
@@ -385,7 +467,6 @@ async def leaderboard(ctx):
     embed = discord.Embed(title="🏆 Top Richest Members", description=desc, color=discord.Color.gold())
     await ctx.send(embed=embed)
 
-# ==================== 5. GAMES & MEMES ====================
 @bot.command()
 async def quiz(ctx):
     quiz_item = random.choice(QUIZ_QUESTIONS)
@@ -451,6 +532,17 @@ async def coinflip(ctx):
     await ctx.send(f"🪙 Result: **{random.choice(['Heads 🪙', 'Tails 🪙'])}**")
 
 @bot.command()
+async def imagine(ctx, *, prompt: str):
+    """Generate AI Images using Pollinations AI"""
+    async with ctx.typing():
+        encoded_prompt = urllib.parse.quote(prompt)
+        image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&nologo=true"
+        
+        embed = discord.Embed(title=f"🎨 Prompt: {prompt}", color=discord.Color.purple())
+        embed.set_image(url=image_url)
+        await ctx.reply(embed=embed)
+
+@bot.command()
 async def slap(ctx, member: discord.Member):
     if member == ctx.author:
         await ctx.send("❌ You cannot slap yourself!")
@@ -458,37 +550,30 @@ async def slap(ctx, member: discord.Member):
 
     await ctx.typing()
     try:
-        author_url, target_url = ctx.author.display_avatar.url, member.display_avatar.url
+        author_url = ctx.author.display_avatar.url
+        target_url = member.display_avatar.url
 
         async with aiohttp.ClientSession() as session:
             async with session.get(author_url) as r1, session.get(target_url) as r2:
-                author_bytes, target_bytes = await r1.read(), await r2.read()
+                author_bytes = await r1.read()
+                target_bytes = await r2.read()
 
         author_img = Image.open(io.BytesIO(author_bytes)).convert("RGBA").resize((110, 110))
         target_img = Image.open(io.BytesIO(target_bytes)).convert("RGBA").resize((90, 90))
 
-        mask_a = Image.new("L", (110, 110), 0)
-        ImageDraw.Draw(mask_a).ellipse((0, 0, 110, 110), fill=255)
-        author_circular = ImageOps.fit(author_img, mask_a.size, centering=(0.5, 0.5))
-        author_circular.putalpha(mask_a)
-
-        mask_t = Image.new("L", (90, 90), 0)
-        ImageDraw.Draw(mask_t).ellipse((0, 0, 90, 90), fill=255)
-        target_circular = ImageOps.fit(target_img, mask_t.size, centering=(0.5, 0.5))
-        target_circular.putalpha(mask_t)
-
-        base = Image.new("RGB", (600, 380), color=(230, 230, 230))
-        ImageDraw.Draw(base).text((20, 20), f"SLAP! {ctx.author.name} ---> {member.name}", fill=(200, 0, 0))
-
-        base.paste(author_circular, (130, 90), author_circular)
-        base.paste(target_circular, (360, 200), target_circular)
+        base = Image.new("RGBA", (600, 380), color=(230, 230, 230, 255))
+        draw = ImageDraw.Draw(base)
+        draw.text((20, 20), f"SLAP! {ctx.author.name} ---> {member.name}", fill=(200, 0, 0, 255))
+        
+        base.paste(author_img, (130, 90), author_img)
+        base.paste(target_img, (360, 200), target_img)
 
         out = io.BytesIO()
         base.save(out, format="PNG")
         out.seek(0)
         await ctx.send(f"💥 {ctx.author.mention} slapped {member.mention}!", file=discord.File(out, filename="slap.png"))
     except Exception as e:
-        await ctx.send(f"❌ Slap meme error: {e}")
+        await ctx.send(f"❌ Slap Error: {e}")
 
 @bot.command()
 async def meme(ctx):
@@ -500,25 +585,6 @@ async def meme(ctx):
                 embed.set_image(url=data["url"])
                 await ctx.send(embed=embed)
 
-@bot.command()
-async def creatememe(ctx, *, text: str):
-    parts = text.split("|")
-    top_text = parts[0].strip().upper()
-    bottom_text = parts[1].strip().upper() if len(parts) > 1 else ""
-
-    img = Image.new('RGB', (600, 350), color=(50, 50, 50))
-    draw = ImageDraw.Draw(img)
-    font = ImageFont.load_default()
-    draw.text((20, 20), top_text, fill=(255, 255, 255), font=font)
-    if bottom_text:
-        draw.text((20, 280), bottom_text, fill=(255, 255, 255), font=font)
-
-    arr = io.BytesIO()
-    img.save(arr, format='PNG')
-    arr.seek(0)
-    await ctx.send(file=discord.File(arr, filename='meme.png'))
-
-# ==================== 6. RANK, UTILITIES & MODERATION ====================
 @bot.command()
 async def rank(ctx, member: discord.Member = None):
     user = member or ctx.author
@@ -571,9 +637,9 @@ async def clear(ctx, amount: int = 5):
     await ctx.channel.purge(limit=amount + 1)
     await ctx.send(f'🧹 {amount} messages cleared!', delete_after=3)
 
-# ==================== 7. RUN BOT ====================
+# ==================== 6. RUN BOT ====================
 if __name__ == "__main__":
     if DISCORD_TOKEN:
         bot.run(DISCORD_TOKEN)
     else:
-        print("Error: DISCORD_TOKEN environment variable is missing!")
+        print("Error: DISCORD_TOKEN is missing!")
